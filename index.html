@@ -1,0 +1,1361 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Phoenix Team - Бронирование рабочих часов</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Montserrat', sans-serif;
+        }
+        
+        body {
+            background-color: #121212;
+            color: #e0e0e0;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 0;
+            border-bottom: 1px solid #333;
+            margin-bottom: 30px;
+        }
+        
+        .team-name {
+            font-family: 'Roboto Mono', monospace;
+            font-size: 24px;
+            font-weight: 600;
+            color: #f57c00;
+            letter-spacing: 1px;
+        }
+        
+        .date-selector {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-bottom: 30px;
+            padding: 15px;
+            background-color: #1e1e1e;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+        
+        .date-display {
+            font-size: 22px;
+            font-weight: 500;
+            margin: 0 25px;
+            min-width: 220px;
+            text-align: center;
+        }
+        
+        .arrow-btn {
+            background-color: #333;
+            border: none;
+            color: #f57c00;
+            font-size: 24px;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: all 0.3s ease;
+        }
+        
+        .arrow-btn:hover {
+            background-color: #444;
+            transform: scale(1.05);
+        }
+        
+        .hours-container {
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 15px;
+            margin-bottom: 40px;
+        }
+        
+        @media (max-width: 1200px) {
+            .hours-container {
+                grid-template-columns: repeat(4, 1fr);
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .hours-container {
+                grid-template-columns: repeat(3, 1fr);
+            }
+        }
+        
+        @media (max-width: 576px) {
+            .hours-container {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+        
+        .hour-slot {
+            background-color: #1e1e1e;
+            border-radius: 12px;
+            padding: 20px 15px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            min-height: 120px;
+            position: relative;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+        
+        .hour-slot.free {
+            border: 2px solid #2e7d32;
+        }
+        
+        .hour-slot.booked {
+            border: 2px solid #c62828;
+            cursor: pointer;
+        }
+        
+        .hour-slot.booked:hover {
+            border: 2px solid #ff9800;
+            background-color: #3e2723;
+        }
+        
+        .hour-slot.selected {
+            border: 2px solid #2196f3;
+            background-color: #1a237e;
+        }
+        
+        .hour-slot.range {
+            border: 2px solid #64b5f6;
+            background-color: #0d47a1;
+        }
+        
+        .hour-slot.disabled {
+            border: 2px solid #555;
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+        
+        .hour-slot.free:hover:not(.disabled) {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.3);
+            background-color: #252525;
+        }
+        
+        .hour-slot.selected:hover:not(.disabled) {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.3);
+            background-color: #1a237e;
+        }
+        
+        .time {
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 10px;
+        }
+        
+        .username {
+            font-size: 16px;
+            font-weight: 500;
+            text-align: center;
+            word-break: break-word;
+            width: 100%;
+        }
+        
+        .booked .username {
+            color: #ff8a80;
+        }
+        
+        .free .username {
+            color: #80cbc4;
+            font-style: italic;
+        }
+        
+        .selected .username, .range .username {
+            color: #bbdefb;
+        }
+        
+        .disabled .username {
+            color: #888;
+        }
+        
+        .booking-modal, .cancel-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.8);
+            z-index: 100;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .modal-content {
+            background-color: #1e1e1e;
+            border-radius: 12px;
+            padding: 30px;
+            width: 90%;
+            max-width: 500px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+        }
+        
+        .modal-title {
+            font-size: 24px;
+            margin-bottom: 20px;
+            color: #f57c00;
+            text-align: center;
+        }
+        
+        .time-selection {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 25px;
+            background-color: #252525;
+            padding: 15px;
+            border-radius: 8px;
+        }
+        
+        .time-block {
+            text-align: center;
+        }
+        
+        .time-label {
+            font-size: 14px;
+            color: #aaa;
+            margin-bottom: 5px;
+        }
+        
+        .time-value {
+            font-size: 18px;
+            font-weight: 600;
+        }
+        
+        .duration-warning {
+            background-color: #ff5722;
+            color: white;
+            padding: 10px;
+            border-radius: 8px;
+            text-align: center;
+            margin-bottom: 20px;
+            font-weight: 500;
+        }
+        
+        .form-group {
+            margin-bottom: 25px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+        
+        .form-group input {
+            width: 100%;
+            padding: 12px 15px;
+            background-color: #252525;
+            border: 2px solid #333;
+            border-radius: 8px;
+            color: #e0e0e0;
+            font-size: 16px;
+        }
+        
+        .form-group input:focus {
+            outline: none;
+            border-color: #f57c00;
+        }
+        
+        .modal-actions {
+            display: flex;
+            justify-content: space-between;
+        }
+        
+        .btn {
+            padding: 12px 25px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .btn-primary {
+            background-color: #f57c00;
+            color: #121212;
+            flex-grow: 1;
+            margin-right: 10px;
+        }
+        
+        .btn-primary:hover {
+            background-color: #ff9800;
+        }
+        
+        .btn-primary:disabled {
+            background-color: #666;
+            cursor: not-allowed;
+        }
+        
+        .btn-secondary {
+            background-color: #333;
+            color: #e0e0e0;
+        }
+        
+        .btn-secondary:hover {
+            background-color: #444;
+        }
+        
+        .btn-danger {
+            background-color: #c62828;
+            color: white;
+            flex-grow: 1;
+            margin-right: 10px;
+        }
+        
+        .btn-danger:hover {
+            background-color: #d32f2f;
+        }
+        
+        .info-text {
+            text-align: center;
+            margin-top: 20px;
+            color: #aaa;
+            font-size: 14px;
+        }
+        
+        .selection-info {
+            background-color: #1a237e;
+            color: #bbdefb;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            text-align: center;
+            font-weight: 500;
+            display: none;
+        }
+        
+        .selection-controls {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-bottom: 20px;
+            display: none;
+        }
+        
+        .control-btn {
+            padding: 10px 20px;
+            background-color: #333;
+            color: #e0e0e0;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .control-btn:hover {
+            background-color: #444;
+        }
+        
+        .footer {
+            text-align: center;
+            padding: 20px;
+            color: #777;
+            font-size: 14px;
+            border-top: 1px solid #333;
+            margin-top: 30px;
+        }
+        
+        .notification {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background-color: #2e7d32;
+            color: white;
+            padding: 15px 25px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            display: none;
+            z-index: 101;
+            animation: slideIn 0.3s ease;
+        }
+        
+        .notification.error {
+            background-color: #c62828;
+        }
+        
+        .notification.info {
+            background-color: #2196f3;
+        }
+        
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        
+        .hour-indicator {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+        }
+        
+        .free .hour-indicator {
+            background-color: #2e7d32;
+        }
+        
+        .booked .hour-indicator {
+            background-color: #c62828;
+        }
+        
+        .selected .hour-indicator, .range .hour-indicator {
+            background-color: #2196f3;
+        }
+        
+        .disabled .hour-indicator {
+            background-color: #555;
+        }
+        
+        .cancel-icon {
+            position: absolute;
+            top: 8px;
+            left: 8px;
+            color: #ff9800;
+            font-size: 16px;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        
+        .hour-slot.booked:hover .cancel-icon {
+            opacity: 1;
+        }
+        
+        .status-bar {
+            background-color: #1a237e;
+            color: #bbdefb;
+            padding: 10px 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            text-align: center;
+            font-size: 14px;
+        }
+        
+        .status-bar.online {
+            background-color: #2e7d32;
+        }
+        
+        .status-bar.offline {
+            background-color: #c62828;
+        }
+        
+        .status-bar.syncing {
+            background-color: #ff9800;
+        }
+        
+        .loading {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.8);
+            z-index: 102;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+        }
+        
+        .spinner {
+            border: 4px solid #333;
+            border-top: 4px solid #f57c00;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin-bottom: 20px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .online-users {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background-color: #1e1e1e;
+            padding: 10px 15px;
+            border-radius: 8px;
+            font-size: 12px;
+            border: 1px solid #333;
+            z-index: 99;
+        }
+        
+        .online-users span {
+            color: #4caf50;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="loading" id="loading">
+        <div class="spinner"></div>
+        <div>Подключение к базе данных...</div>
+    </div>
+    
+    <div class="online-users" id="online-users" style="display: none;">
+        Онлайн: <span id="online-count">0</span>
+    </div>
+    
+    <div class="header">
+        <div></div>
+        <div class="team-name">Phoenix Team</div>
+        <div></div>
+    </div>
+    
+    <div class="status-bar" id="status-bar">
+        🔄 Подключение...
+    </div>
+    
+    <div class="date-selector">
+        <button class="arrow-btn" id="prev-day">&#8592;</button>
+        <div class="date-display" id="current-date"></div>
+        <button class="arrow-btn" id="next-day">&#8594;</button>
+    </div>
+    
+    <div class="selection-info" id="selection-info">
+        Выберите начало и конец рабочей смены. Минимальная продолжительность - 2 часа.
+    </div>
+    
+    <div class="selection-controls" id="selection-controls">
+        <button class="control-btn" id="cancel-selection">Отменить выбор</button>
+        <button class="control-btn" id="confirm-selection">Подтвердить выбор</button>
+    </div>
+    
+    <div class="hours-container" id="hours-container">
+        <!-- Часы будут сгенерированы через JavaScript -->
+    </div>
+    
+    <div class="info-text">
+        Выберите начало и конец рабочей смены. Минимальная продолжительность - 2 часа. Нажмите на забронированный час для отмены.
+    </div>
+    
+    <div class="booking-modal" id="booking-modal">
+        <div class="modal-content">
+            <h2 class="modal-title">Бронирование времени</h2>
+            <div class="time-selection">
+                <div class="time-block">
+                    <div class="time-label">Начало</div>
+                    <div class="time-value" id="start-time">09:00</div>
+                </div>
+                <div class="time-block">
+                    <div class="time-label">Конец</div>
+                    <div class="time-value" id="end-time">11:00</div>
+                </div>
+                <div class="time-block">
+                    <div class="time-label">Длительность</div>
+                    <div class="time-value" id="duration">2 часа</div>
+                </div>
+            </div>
+            <div id="duration-warning" class="duration-warning" style="display: none;">
+                Минимальная продолжительность - 2 часа!
+            </div>
+            <div class="form-group">
+                <label for="username">Ваш никнейм:</label>
+                <input type="text" id="username" placeholder="Введите ваш никнейм" maxlength="20">
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-primary" id="confirm-booking">Забронировать</button>
+                <button class="btn btn-secondary" id="cancel-booking">Отмена</button>
+            </div>
+        </div>
+    </div>
+    
+    <div class="cancel-modal" id="cancel-modal">
+        <div class="modal-content">
+            <h2 class="modal-title">Отмена бронирования</h2>
+            <div class="time-selection">
+                <div class="time-block">
+                    <div class="time-label">Начало</div>
+                    <div class="time-value" id="cancel-start-time">09:00</div>
+                </div>
+                <div class="time-block">
+                    <div class="time-label">Конец</div>
+                    <div class="time-value" id="cancel-end-time">11:00</div>
+                </div>
+                <div class="time-block">
+                    <div class="time-label">Никнейм</div>
+                    <div class="time-value" id="cancel-username">User</div>
+                </div>
+            </div>
+            <p style="text-align: center; margin: 20px 0; color: #ff8a80;">
+                Вы уверены, что хотите отменить это бронирование?
+            </p>
+            <div class="modal-actions">
+                <button class="btn btn-danger" id="confirm-cancel">Да, отменить</button>
+                <button class="btn btn-secondary" id="cancel-cancel">Нет, оставить</button>
+            </div>
+        </div>
+    </div>
+    
+    <div class="notification" id="notification">
+        Бронирование успешно завершено!
+    </div>
+    
+    <div class="footer">
+        Phoenix Team &copy; 2026. Система бронирования рабочих часов.
+    </div>
+
+    <script>
+        // ============================================
+        // Phoenix Team Booking System - Реальное время
+        // Использует Firebase Realtime Database
+        // ============================================
+        
+        // Текущая дата
+        let currentDate = new Date();
+        
+        // Данные о бронированиях
+        let bookings = {};
+        
+        // Переменные для выбора диапазона
+        let selectionState = {
+            selecting: false,
+            startHour: null,
+            endHour: null
+        };
+        
+        // Firebase переменные
+        let db;
+        let isConnected = false;
+        let onlineUsers = {};
+        let currentUser = null;
+        
+        // ============================================
+        // КОНФИГУРАЦИЯ FIREBASE
+        // ============================================
+        // ВАЖНО: ЗАМЕНИТЕ эти настройки на свои из Firebase Console
+        const firebaseConfig = {
+            apiKey: "AIzaSyA8Hm9kz4EZEWcXmQvFWBFA1GaKKEXXe6I",
+            authDomain: "phoenix-team-booking.firebaseapp.com",
+            databaseURL: "https://phoenix-team-booking-default-rtdb.firebaseio.com",
+            projectId: "phoenix-team-booking",
+            storageBucket: "phoenix-team-booking.firebasestorage.app",
+            messagingSenderId: "98622020151",
+            appId: "1:98622020151:web:b946ee3f875da288ed7db2"
+        };
+        
+        // Генерируем уникальный ID для пользователя
+        function generateUserId() {
+            return 'user_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+        }
+        
+        // Инициализация Firebase
+        function initFirebase() {
+            try {
+                // Инициализируем Firebase
+                firebase.initializeApp(firebaseConfig);
+                db = firebase.database();
+                
+                // Устанавливаем обработчики подключения
+                const connectedRef = db.ref(".info/connected");
+                connectedRef.on("value", (snap) => {
+                    if (snap.val() === true) {
+                        // Мы подключены!
+                        isConnected = true;
+                        updateStatus('online', '✓ Подключено к базе данных');
+                        
+                        // Скрываем загрузку
+                        setTimeout(() => {
+                            document.getElementById('loading').style.display = 'none';
+                        }, 500);
+                        
+                        // Регистрируем пользователя как онлайн
+                        registerOnlineUser();
+                        
+                        // Загружаем бронирования
+                        loadBookings();
+                    } else {
+                        // Мы отключены
+                        isConnected = false;
+                        updateStatus('offline', '✗ Нет подключения к базе данных');
+                    }
+                });
+                
+                // Слушаем изменения в бронированиях
+                const bookingsRef = db.ref("bookings");
+                bookingsRef.on("value", (snapshot) => {
+                    const data = snapshot.val();
+                    if (data) {
+                        bookings = data;
+                        updateDateDisplay();
+                        showNotification('Данные обновлены в реальном времени', false, true);
+                    }
+                });
+                
+                // Слушаем онлайн пользователей
+                const usersRef = db.ref("onlineUsers");
+                usersRef.on("value", (snapshot) => {
+                    const users = snapshot.val();
+                    if (users) {
+                        onlineUsers = users;
+                        updateOnlineUsers();
+                    }
+                });
+                
+                // Очищаем старых пользователей при загрузке
+                cleanupOldUsers();
+                
+            } catch (error) {
+                console.error("Ошибка инициализации Firebase:", error);
+                updateStatus('offline', 'Ошибка подключения к базе данных');
+                document.getElementById('loading').style.display = 'none';
+            }
+        }
+        
+        // Регистрация онлайн пользователя
+        function registerOnlineUser() {
+            if (!db || !isConnected) return;
+            
+            currentUser = generateUserId();
+            const userRef = db.ref("onlineUsers/" + currentUser);
+            
+            // Устанавливаем данные пользователя
+            userRef.set({
+                id: currentUser,
+                lastOnline: firebase.database.ServerValue.TIMESTAMP
+            });
+            
+            // Удаляем пользователя при закрытии вкладки
+            userRef.onDisconnect().remove();
+        }
+        
+        // Очистка старых пользователей (больше 5 минут назад)
+        function cleanupOldUsers() {
+            if (!db) return;
+            
+            const usersRef = db.ref("onlineUsers");
+            usersRef.once("value", (snapshot) => {
+                const users = snapshot.val();
+                if (!users) return;
+                
+                const now = Date.now();
+                const fiveMinutesAgo = now - 5 * 60 * 1000;
+                
+                Object.keys(users).forEach(userId => {
+                    if (users[userId].lastOnline < fiveMinutesAgo) {
+                        db.ref("onlineUsers/" + userId).remove();
+                    }
+                });
+            });
+        }
+        
+        // Обновление счетчика онлайн пользователей
+        function updateOnlineUsers() {
+            const count = Object.keys(onlineUsers).length;
+            document.getElementById('online-count').textContent = count;
+            document.getElementById('online-users').style.display = 'block';
+        }
+        
+        // Обновление статуса
+        function updateStatus(status, message) {
+            const statusBar = document.getElementById('status-bar');
+            statusBar.textContent = message;
+            statusBar.className = 'status-bar ' + status;
+        }
+        
+        // ============================================
+        // ОСНОВНЫЕ ФУНКЦИИ РАБОТЫ С ДАННЫМИ
+        // ============================================
+        
+        // Загрузить бронирования
+        async function loadBookings() {
+            if (!db) return;
+            
+            try {
+                const snapshot = await db.ref("bookings").once("value");
+                const data = snapshot.val();
+                bookings = data || {};
+                updateDateDisplay();
+            } catch (error) {
+                console.error("Ошибка загрузки бронирований:", error);
+                showNotification('Ошибка загрузки данных', true);
+            }
+        }
+        
+        // Сохранить бронирование
+        async function saveBooking(date, startHour, endHour, username) {
+            if (!db || !isConnected) {
+                showNotification('Нет подключения к базе данных', true);
+                return { success: false, message: 'Нет подключения' };
+            }
+            
+            const dateStr = date.toISOString().split('T')[0];
+            
+            // Проверяем, свободно ли время
+            for (let hour = startHour; hour < endHour; hour++) {
+                const key = `${dateStr}_${hour}`;
+                if (bookings[key]) {
+                    return {
+                        success: false,
+                        message: `Время уже занято пользователем: ${bookings[key].username}`
+                    };
+                }
+            }
+            
+            try {
+                // Подготавливаем обновления
+                const updates = {};
+                
+                for (let hour = startHour; hour < endHour; hour++) {
+                    const key = `${dateStr}_${hour}`;
+                    updates[`bookings/${key}`] = {
+                        username: username,
+                        startHour: startHour,
+                        endHour: endHour,
+                        bookedAt: new Date().toISOString(),
+                        bookedBy: currentUser
+                    };
+                }
+                
+                // Добавляем в историю
+                const historyKey = `history/${dateStr}_${startHour}_${endHour}_${Date.now()}`;
+                updates[historyKey] = {
+                    action: 'book',
+                    date: dateStr,
+                    startHour: startHour,
+                    endHour: endHour,
+                    username: username,
+                    timestamp: firebase.database.ServerValue.TIMESTAMP
+                };
+                
+                // Сохраняем все изменения атомарно
+                await db.ref().update(updates);
+                
+                return {
+                    success: true,
+                    message: 'Бронирование сохранено в облаке'
+                };
+                
+            } catch (error) {
+                console.error("Ошибка сохранения бронирования:", error);
+                return {
+                    success: false,
+                    message: 'Ошибка сохранения: ' + error.message
+                };
+            }
+        }
+        
+        // Удалить бронирование
+        async function deleteBooking(date, startHour, endHour) {
+            if (!db || !isConnected) {
+                showNotification('Нет подключения к базе данных', true);
+                return { success: false, message: 'Нет подключения' };
+            }
+            
+            const dateStr = date.toISOString().split('T')[0];
+            
+            try {
+                // Подготавливаем обновления
+                const updates = {};
+                
+                // Удаляем бронирование
+                for (let hour = startHour; hour < endHour; hour++) {
+                    const key = `${dateStr}_${hour}`;
+                    updates[`bookings/${key}`] = null;
+                }
+                
+                // Добавляем в историю
+                const historyKey = `history/${dateStr}_${startHour}_${endHour}_${Date.now()}`;
+                updates[historyKey] = {
+                    action: 'cancel',
+                    date: dateStr,
+                    startHour: startHour,
+                    endHour: endHour,
+                    timestamp: firebase.database.ServerValue.TIMESTAMP
+                };
+                
+                // Сохраняем все изменения атомарно
+                await db.ref().update(updates);
+                
+                return {
+                    success: true,
+                    message: 'Бронирование удалено'
+                };
+                
+            } catch (error) {
+                console.error("Ошибка удаления бронирования:", error);
+                return {
+                    success: false,
+                    message: 'Ошибка удаления: ' + error.message
+                };
+            }
+        }
+        
+        // ============================================
+        // ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
+        // ============================================
+        
+        // Форматирование даты
+        function formatDate(date) {
+            const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+            return date.toLocaleDateString('ru-RU', options);
+        }
+        
+        // Форматирование времени (интервал)
+        function formatTime(hour) {
+            const nextHour = (hour + 1) % 24;
+            const nextHourStr = nextHour.toString().padStart(2, '0');
+            return `${hour.toString().padStart(2, '0')}:00 - ${nextHourStr}:00`;
+        }
+        
+        // Форматирование времени для модального окна
+        function formatTimeForModal(hour) {
+            return `${hour.toString().padStart(2, '0')}:00`;
+        }
+        
+        // Получение ключа для бронирования
+        function getBookingKey(date, hour) {
+            const dateStr = date.toISOString().split('T')[0];
+            return `${dateStr}_${hour}`;
+        }
+        
+        // Проверка, забронирован ли час
+        function isHourBooked(date, hour) {
+            const key = getBookingKey(date, hour);
+            return bookings[key] !== undefined;
+        }
+        
+        // Получение данных бронирования
+        function getBookingForHour(date, hour) {
+            const key = getBookingKey(date, hour);
+            return bookings[key] || null;
+        }
+        
+        // Получение никнейма
+        function getUsernameForHour(date, hour) {
+            const booking = getBookingForHour(date, hour);
+            return booking ? booking.username : null;
+        }
+        
+        // Проверка доступности диапазона
+        function isRangeAvailable(date, startHour, endHour) {
+            for (let hour = startHour; hour < endHour; hour++) {
+                if (isHourBooked(date, hour)) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        
+        // Найти диапазон бронирования
+        function findBookingRange(date, hour) {
+            const booking = getBookingForHour(date, hour);
+            if (!booking) return null;
+            
+            return {
+                startHour: booking.startHour,
+                endHour: booking.endHour,
+                username: booking.username
+            };
+        }
+        
+        // Правильное склонение слова "час"
+        function getHoursText(hours) {
+            if (hours === 1) return '';
+            if (hours >= 2 && hours <= 4) return 'а';
+            return 'ов';
+        }
+        
+        // Показать уведомление
+        function showNotification(message, isError = false, isInfo = false) {
+            const notification = document.getElementById('notification');
+            notification.textContent = message;
+            
+            if (isError) {
+                notification.className = 'notification error';
+            } else if (isInfo) {
+                notification.className = 'notification info';
+            } else {
+                notification.className = 'notification';
+            }
+            
+            notification.style.display = 'block';
+            
+            setTimeout(() => {
+                notification.style.display = 'none';
+            }, 3000);
+        }
+        
+        // ============================================
+        // ИНТЕРФЕЙС
+        // ============================================
+        
+        // Начать выбор диапазона
+        function startSelection(hour) {
+            selectionState.selecting = true;
+            selectionState.startHour = hour;
+            selectionState.endHour = null;
+            
+            document.getElementById('selection-info').style.display = 'block';
+            document.getElementById('selection-controls').style.display = 'flex';
+            
+            updateSelectionInfo();
+            renderHoursForDate(currentDate);
+        }
+        
+        // Обновить выбранный диапазон
+        function updateSelection(hour) {
+            if (!selectionState.selecting || selectionState.startHour === null) return;
+            
+            if (hour < selectionState.startHour) {
+                selectionState.endHour = selectionState.startHour;
+                selectionState.startHour = hour;
+            } else {
+                selectionState.endHour = hour;
+            }
+            
+            updateSelectionInfo();
+            renderHoursForDate(currentDate);
+        }
+        
+        // Завершить выбор диапазона
+        function finishSelection() {
+            if (!selectionState.selecting || selectionState.startHour === null || selectionState.endHour === null) {
+                showNotification('Выберите начало и конец рабочей смены', true);
+                return;
+            }
+            
+            const startHour = Math.min(selectionState.startHour, selectionState.endHour);
+            let endHour = Math.max(selectionState.startHour, selectionState.endHour);
+            
+            // Добавляем 1 час, так как если выбрали с 8 до 10, это значит 8:00-11:00 (3 часа)
+            endHour = endHour + 1;
+            
+            if (endHour - startHour < 2) {
+                showNotification('Минимальная продолжительность работы - 2 часа!', true);
+                return;
+            }
+            
+            if (!isRangeAvailable(currentDate, startHour, endHour)) {
+                showNotification('Выбранный диапазон пересекается с уже забронированным временем!', true);
+                return;
+            }
+            
+            openBookingModal(currentDate, startHour, endHour);
+        }
+        
+        // Отменить выбор
+        function cancelSelection() {
+            selectionState.selecting = false;
+            selectionState.startHour = null;
+            selectionState.endHour = null;
+            
+            document.getElementById('selection-info').style.display = 'none';
+            document.getElementById('selection-controls').style.display = 'none';
+            
+            renderHoursForDate(currentDate);
+        }
+        
+        // Обновить информацию о выборе
+        function updateSelectionInfo() {
+            const infoElement = document.getElementById('selection-info');
+            
+            if (selectionState.startHour !== null && selectionState.endHour !== null) {
+                const startHour = Math.min(selectionState.startHour, selectionState.endHour);
+                let endHour = Math.max(selectionState.startHour, selectionState.endHour);
+                
+                endHour = endHour + 1;
+                const duration = endHour - startHour;
+                
+                infoElement.textContent = `Выбрано время с ${formatTimeForModal(startHour)} до ${formatTimeForModal(endHour)} (${duration} час${getHoursText(duration)})`;
+                
+                if (duration < 2) {
+                    infoElement.style.backgroundColor = '#c62828';
+                } else {
+                    infoElement.style.backgroundColor = '#1a237e';
+                }
+            } else if (selectionState.startHour !== null) {
+                infoElement.textContent = `Выберите час окончания работы. Начало: ${formatTimeForModal(selectionState.startHour)}`;
+            }
+        }
+        
+        // Отображение часов
+        function renderHoursForDate(date) {
+            const container = document.getElementById('hours-container');
+            container.innerHTML = '';
+            
+            let selectionStart = null;
+            let selectionEnd = null;
+            
+            if (selectionState.selecting && selectionState.startHour !== null && selectionState.endHour !== null) {
+                selectionStart = Math.min(selectionState.startHour, selectionState.endHour);
+                selectionEnd = Math.max(selectionState.startHour, selectionState.endHour) + 1;
+            }
+            
+            for (let hour = 0; hour < 24; hour++) {
+                const hourElement = document.createElement('div');
+                const isBooked = isHourBooked(date, hour);
+                const booking = getBookingForHour(date, hour);
+                const username = booking ? booking.username : null;
+                
+                let slotClass = 'hour-slot ';
+                let slotText = 'Свободно';
+                
+                if (isBooked) {
+                    slotClass += 'booked ';
+                    slotText = username;
+                } else if (selectionState.selecting) {
+                    if (hour === selectionState.startHour) {
+                        slotClass += 'selected ';
+                        slotText = 'Начало';
+                    } else if (selectionStart !== null && selectionEnd !== null && hour >= selectionStart && hour < selectionEnd) {
+                        slotClass += 'range ';
+                        slotText = 'Выбрано';
+                    } else if (hour === (selectionState.endHour !== null ? selectionState.endHour + 1 : null)) {
+                        slotClass += 'selected ';
+                        slotText = 'Конец';
+                    } else {
+                        slotClass += 'free ';
+                    }
+                } else {
+                    slotClass += 'free ';
+                }
+                
+                hourElement.className = slotClass;
+                hourElement.dataset.hour = hour;
+                
+                hourElement.innerHTML = `
+                    <div class="hour-indicator"></div>
+                    ${isBooked ? '<div class="cancel-icon">❌</div>' : ''}
+                    <div class="time">${formatTime(hour)}</div>
+                    <div class="username">${slotText}</div>
+                `;
+                
+                if (isBooked) {
+                    hourElement.addEventListener('click', () => handleCancelClick(date, hour));
+                } else {
+                    hourElement.addEventListener('click', () => handleHourClick(date, hour));
+                }
+                
+                container.appendChild(hourElement);
+            }
+        }
+        
+        // Обработка клика на час
+        function handleHourClick(date, hour) {
+            if (!selectionState.selecting) {
+                startSelection(hour);
+            } else {
+                updateSelection(hour);
+            }
+        }
+        
+        // Обработка клика для отмены
+        function handleCancelClick(date, hour) {
+            const bookingRange = findBookingRange(date, hour);
+            if (!bookingRange) return;
+            
+            openCancelModal(date, bookingRange.startHour, bookingRange.endHour, bookingRange.username);
+        }
+        
+        // Обновление отображаемой даты
+        function updateDateDisplay() {
+            const dateElement = document.getElementById('current-date');
+            dateElement.textContent = formatDate(currentDate);
+            
+            cancelSelection();
+            renderHoursForDate(currentDate);
+        }
+        
+        // Открытие модального окна бронирования
+        function openBookingModal(date, startHour, endHour) {
+            const modal = document.getElementById('booking-modal');
+            const startTimeElement = document.getElementById('start-time');
+            const endTimeElement = document.getElementById('end-time');
+            const durationElement = document.getElementById('duration');
+            const durationWarning = document.getElementById('duration-warning');
+            
+            const duration = endHour - startHour;
+            
+            startTimeElement.textContent = formatTimeForModal(startHour);
+            endTimeElement.textContent = formatTimeForModal(endHour);
+            durationElement.textContent = `${duration} час${getHoursText(duration)}`;
+            
+            if (duration < 2) {
+                durationWarning.style.display = 'block';
+                document.getElementById('confirm-booking').disabled = true;
+            } else {
+                durationWarning.style.display = 'none';
+                document.getElementById('confirm-booking').disabled = false;
+            }
+            
+            if (!isRangeAvailable(date, startHour, endHour)) {
+                showNotification('Выбранный диапазон пересекается с уже забронированным временем!', true);
+                return;
+            }
+            
+            modal.dataset.bookingDate = date.toISOString();
+            modal.dataset.bookingStartHour = startHour;
+            modal.dataset.bookingEndHour = endHour;
+            
+            document.getElementById('username').value = '';
+            modal.style.display = 'flex';
+        }
+        
+        // Открытие модального окна отмены
+        function openCancelModal(date, startHour, endHour, username) {
+            const modal = document.getElementById('cancel-modal');
+            const startTimeElement = document.getElementById('cancel-start-time');
+            const endTimeElement = document.getElementById('cancel-end-time');
+            const usernameElement = document.getElementById('cancel-username');
+            
+            startTimeElement.textContent = formatTimeForModal(startHour);
+            endTimeElement.textContent = formatTimeForModal(endHour);
+            usernameElement.textContent = username;
+            
+            modal.dataset.cancelDate = date.toISOString();
+            modal.dataset.cancelStartHour = startHour;
+            modal.dataset.cancelEndHour = endHour;
+            
+            modal.style.display = 'flex';
+        }
+        
+        // Закрытие модального окна бронирования
+        function closeBookingModal() {
+            const modal = document.getElementById('booking-modal');
+            modal.style.display = 'none';
+            cancelSelection();
+        }
+        
+        // Закрытие модального окна отмены
+        function closeCancelModal() {
+            const modal = document.getElementById('cancel-modal');
+            modal.style.display = 'none';
+        }
+        
+        // ============================================
+        // ИНИЦИАЛИЗАЦИЯ
+        // ============================================
+        
+        document.addEventListener('DOMContentLoaded', () => {
+            // Инициализируем Firebase
+            initFirebase();
+            
+            // Обработчики для стрелок переключения даты
+            document.getElementById('prev-day').addEventListener('click', () => {
+                currentDate.setDate(currentDate.getDate() - 1);
+                updateDateDisplay();
+            });
+            
+            document.getElementById('next-day').addEventListener('click', () => {
+                currentDate.setDate(currentDate.getDate() + 1);
+                updateDateDisplay();
+            });
+            
+            // Обработчики для кнопок выбора
+            document.getElementById('cancel-selection').addEventListener('click', cancelSelection);
+            document.getElementById('confirm-selection').addEventListener('click', finishSelection);
+            
+            // Обработчики для модального окна бронирования
+            document.getElementById('confirm-booking').addEventListener('click', async () => {
+                const modal = document.getElementById('booking-modal');
+                const usernameInput = document.getElementById('username');
+                const username = usernameInput.value.trim();
+                
+                if (!username) {
+                    showNotification('Введите ваш никнейм', true);
+                    return;
+                }
+                
+                if (username.length < 2) {
+                    showNotification('Никнейм должен содержать минимум 2 символа', true);
+                    return;
+                }
+                
+                const bookingDate = new Date(modal.dataset.bookingDate);
+                const startHour = parseInt(modal.dataset.bookingStartHour);
+                const endHour = parseInt(modal.dataset.bookingEndHour);
+                
+                if (!isRangeAvailable(bookingDate, startHour, endHour)) {
+                    showNotification('К сожалению, это время уже забронировано другим сотрудником', true);
+                    closeBookingModal();
+                    return;
+                }
+                
+                const result = await saveBooking(bookingDate, startHour, endHour, username);
+                
+                if (result.success) {
+                    closeBookingModal();
+                    showNotification(`Вы успешно забронировали время с ${formatTimeForModal(startHour)} до ${formatTimeForModal(endHour)}. ${result.message}`);
+                } else {
+                    showNotification(result.message, true);
+                }
+            });
+            
+            document.getElementById('cancel-booking').addEventListener('click', closeBookingModal);
+            
+            // Обработчики для модального окна отмены
+            document.getElementById('confirm-cancel').addEventListener('click', async () => {
+                const modal = document.getElementById('cancel-modal');
+                const cancelDate = new Date(modal.dataset.cancelDate);
+                const startHour = parseInt(modal.dataset.cancelStartHour);
+                const endHour = parseInt(modal.dataset.cancelEndHour);
+                
+                const result = await deleteBooking(cancelDate, startHour, endHour);
+                
+                if (result.success) {
+                    closeCancelModal();
+                    showNotification(`Бронирование с ${formatTimeForModal(startHour)} до ${formatTimeForModal(endHour)} успешно отменено`);
+                } else {
+                    showNotification(result.message, true);
+                }
+            });
+            
+            document.getElementById('cancel-cancel').addEventListener('click', closeCancelModal);
+            
+            // Закрытие модальных окон при клике вне их
+            document.getElementById('booking-modal').addEventListener('click', (e) => {
+                if (e.target.id === 'booking-modal') {
+                    closeBookingModal();
+                }
+            });
+            
+            document.getElementById('cancel-modal').addEventListener('click', (e) => {
+                if (e.target.id === 'cancel-modal') {
+                    closeCancelModal();
+                }
+            });
+            
+            // Закрытие модальных окон по нажатию Escape
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape') {
+                    closeBookingModal();
+                    closeCancelModal();
+                    cancelSelection();
+                }
+            });
+        });
+    </script>
+</body>
+</html>
